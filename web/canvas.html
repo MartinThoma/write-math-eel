@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="utf-8">
+    <title>Classify</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+   <!-- prevent centering jumps-->
+   <style>
+    html {
+       overflow-y: scroll;
+       background-color: #fefefe;
+    }
+
+    body {
+        font-family: Open Sans, Arial;
+        color: #454545;
+        font-size: 16px;
+        line-height: 1.4;
+    }
+
+    a {
+        text-decoration: none;
+    }
+
+    /* default */
+    @media not all and (max-width: 1200px) {
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 402px 398px 1fr;
+            grid-template-rows: auto 500px;
+            grid-gap: 10px;
+
+            grid-template-areas:
+            ". header   header  ."
+            ". classify results .";
+        }
+
+        #sheet {
+            border:1px solid black;
+            width:400px;
+            height:400px;
+            -ms-touch-action: none;
+            touch-action: none;
+        }
+    }
+
+    /* mobile phone */
+    @media all and (max-width: 1200px) {
+        .container {
+            display: grid;
+            grid-template-columns: auto;
+
+            grid-template-areas:
+            "header"
+            "classify"
+            "results";
+        }
+
+        #sheet {
+            border:1px solid black;
+            width: 100%;
+            height: 400px;
+            -ms-touch-action: none;
+            touch-action: none;
+        }
+    }
+
+    .table {
+        width: 100%;
+        max-width: 100%;
+        margin-bottom: 20px;
+    }
+
+    .table>thead>tr>th {
+        vertical-align: bottom;
+        border-bottom: 2px solid #ddd;
+    }
+
+    .btn {
+        display: inline-block;
+        padding: 6px 12px;
+        margin-bottom: 0;
+        font-weight: 400;
+        line-height: 1.4;
+        text-align: center;
+        white-space: nowrap;
+        vertical-align: middle;
+        -ms-touch-action: manipulation;
+        touch-action: manipulation;
+        cursor: pointer;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        background-image: none;
+        border: 1px solid transparent;
+        border-radius: 4px;
+    }
+
+    .btn-danger {
+        color: #fff;
+        background-color: #d9534f;
+        border-color: #d43f3a;
+    }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="page-header" style="grid-area: header;"><h1>Classify</h1></div>
+        <div style="grid-area: classify;">
+            <form method="post" onsubmit="$('button').prop('disabled', true);return addCanvas();" id="form">
+            <input type="hidden" id="drawnJSON" name="drawnJSON" value="" />
+            <canvas id="sheet" width="400" height="400"></canvas>
+            <a href="#" class="btn btn-danger" style="display: block;margin-top: 2px;" onclick="location.reload();">Clear</a>
+            </form>
+        </div>
+        <div style="grid-area: results;">
+            <div id="classification-results"></div>
+        </div>
+    </div>
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/jquery/3.5.0/jquery.min.js"></script>
+<script type='text/javascript' src='//cdnjs.cloudflare.com/ajax/libs/fabric.js/3.6.3/fabric.min.js'></script>
+<script type="text/javascript">
+  window.MathJax = {
+    tex2jax: {
+      inlineMath: [ ['$','$'], ["\\(","\\)"] ],
+      processEscapes: true
+    }
+  };
+</script>
+<script type="text/javascript"
+  src="https://cdn.jsdelivr.net/npm/mathjax@2/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+</script>
+<script type="text/javascript" src="/eel.js"></script>
+<script>
+    var lines = [];
+    var record_id = 0;
+
+    window.onload = function() {
+        var canvas = document.getElementsByTagName('canvas')[0];
+        canvas.width  = $('#sheet').parent().width();
+
+        var canvas = new fabric.Canvas('sheet');
+        canvas.isDrawingMode = true;
+        canvas.freeDrawingBrush.width = 5;
+        canvas.freeDrawingBrush.color = "#ff0000";
+        canvas.on('mouse:down', startRecording);
+
+        function startRecording(event) {
+            // directly add first point
+            var x = event.e.x;
+            var y = event.e.y;
+            var time = new Date().getTime();
+            if (typeof(x) != 'number') {
+                console.log(event);
+                x = event.e.screenX;
+                y = event.e.screenY;
+            }
+            if (typeof(x) != 'number') {
+                x = event.e.touches[0].clientX;
+                y = event.e.touches[0].clientY;
+            }
+            var line = [];
+            line.push({
+                x: x,
+                y: y,
+                time: time
+            });
+            canvas.on("mouse:move", recordMoment);
+            canvas.on("mouse:up", stopRecording);
+
+            function recordMoment(event) {
+                var x = event.e.x;
+                var y = event.e.y;
+                var time = new Date().getTime();
+                if (typeof(x) != 'number') {
+                    x = event.e.screenX;
+                    y = event.e.screenY;
+                }
+                if (typeof(x) != 'number') {
+                    x = event.e.touches[0].clientX;
+                    y = event.e.touches[0].clientY;
+                }
+                line.push({
+                    x: x,
+                    y: y,
+                    time: time
+                });
+            }
+
+            async function run() {
+                let results = await eel.worker(lines)(); // Must prefix call with 'await', otherwise it's the same syntax
+                showResults(results);
+            }
+
+            function showResults(data) {
+                        $('#resultlink').removeClass('invisible');
+                         var content = "<table class='table' role='table' name='resulttable' id='resulttable'>";
+                         content += "<thead><tr><th>&alpha;</th><th>&alpha;</th><th>LaTeX</th><th>%</th></tr></thead><tbody>";
+                         data = JSON.parse(data);
+                         $.each(data, function(index, value) {
+                            probability = value['probability'];
+                            var symbollistrender = value['semantics'].split(";;");
+                            console.log(symbollistrender);
+                            var latex_complete = value['complete_latex'];
+                            var rendered = "";
+                            for (var i = 0; i < symbollistrender.length; i++) {
+                                var arr = symbollistrender[i].split(";");
+                                var system_id = arr[0];
+                                var latex = arr[1];
+                                var unicode_code_point = arr[2];
+                                var font = arr[3];
+                                var font_style = arr[4];
+                                rendered += "&#" + unicode_code_point + ";";
+                            };
+
+                            content += "<tr><td>"+rendered+"</td><td>$$"+ latex_complete + "$$</td><td><input id=\"inptxt"+system_id+"\" class=\"form-control\" value='"+ latex_complete + "' disabled/></td><td style='text-align:right'>" + parseFloat(probability*100).toFixed(2) + "</td></tr>";
+                         });
+                         content += "</tbody></table>";
+                         document.getElementById('classification-results').innerHTML = content;
+
+
+                         $.each(data, function(index, value) {
+                             $.each(value,
+                                    function(symbolbla, probability) {
+                                        var arr = symbolbla.split(";");
+                                        var system_id = arr[0];
+                                        var latex = arr[1];
+                                        var unicode_code_point = arr[2];
+                                        var font = arr[3];
+                                        var font_style = arr[4];
+                                    })
+                         });
+                         MathJax.Hub.Queue(["Typeset",MathJax.Hub]);
+                    }
+
+            function stopRecording() {
+                lines.push(line);
+                canvas.off("mouse:move", recordMoment);
+                canvas.off("mouse:up", stopRecording);
+                run();
+            }
+        }
+    }
+
+
+    function addCanvas() {
+        var drawnJSON = document.getElementById('drawnJSON');
+        drawnJSON.value = JSON.stringify(lines);
+        return true;
+    }
+    </script>
+</body>
+</html>
