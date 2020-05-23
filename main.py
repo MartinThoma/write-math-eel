@@ -1,23 +1,17 @@
 #!/usr/bin/env python
-import eel
 
-"""Start a webserver which can record the data and work as a classifier."""
+"""Start a GUI to classify symbols."""
 
 # Core Library modules
 import json
 import logging
 
-# First party modules
+# Third party modules
+import eel
 import hwrt
-
-# Local modules
 from hwrt import classify
 
 logger = logging.getLogger(__name__)
-
-
-# Global variables
-globals()["n"] = 10
 
 
 def get_json_result(results, n=10):
@@ -44,11 +38,10 @@ def get_json_result(results, n=10):
 
 
 @eel.expose
-def worker(strokelist):  # request.form["classify"]
-    """Implement a worker for write-math.com."""
-    # Classify
+def worker(strokelist):
+    """Classify the drawn symbol."""
     results = classify.classify_segmented_recording(json.dumps(strokelist))
-    return get_json_result(results, n=globals()["n"])
+    return get_json_result(results, n=10)
 
 
 if __name__ == "__main__":
